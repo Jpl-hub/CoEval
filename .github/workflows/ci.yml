@@ -39,9 +39,24 @@ jobs:
     - name: Start backend server
       run: |
         cd backend
+        # 启动后端服务
         nohup python run.py > server.log 2>&1 &
+        # 等待服务启动
         echo "Waiting for server to start..."
-        sleep 10
+        for i in {1..30}; do
+          if curl -s http://localhost:8000/api/health > /dev/null; then
+            echo "Server is up!"
+            break
+          fi
+          echo "Attempt $i: Server not ready yet..."
+          sleep 2
+          if [ $i -eq 30 ]; then
+            echo "Server failed to start in time"
+            cat server.log
+            exit 1
+          fi
+        done
+        # 显示服务器日志
         cat server.log
     
     - name: Run tests

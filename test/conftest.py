@@ -19,19 +19,21 @@ def test_client() -> Generator:
     yield session
     session.close()
 
-def wait_for_server(base_url: str, max_retries: int = 5, delay: int = 2) -> None:
+def wait_for_server(base_url: str, max_retries: int = 30, delay: int = 2) -> None:
     """等待服务器启动"""
     for i in range(max_retries):
         try:
-            response = requests.get(f"{base_url}/health")
-            if response.status_code == 200:
+            # 尝试访问任何API端点，不一定是health
+            response = requests.get(f"{base_url}/auth/token")
+            if response.status_code in [200, 401]:  # 401也是正常的，表示需要认证
+                print(f"Server is up! (Attempt {i+1})")
                 return
         except requests.exceptions.ConnectionError:
             if i < max_retries - 1:
+                print(f"Attempt {i+1}: Server not ready yet...")
                 time.sleep(delay)
             continue
     raise Exception("Server did not start in time")
-
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_environment(base_url: str):
     """设置测试环境"""
