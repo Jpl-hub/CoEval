@@ -16,14 +16,13 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: coeval
-          MYSQL_ROOT_HOST: '%'  # 允许从任何主机连接
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -proot"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=3
 
     steps:
     - uses: actions/checkout@v2
@@ -38,35 +37,59 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r backend/requirements.txt
         pip install -r test/requirements.txt
+        sudo apt-get install -y mysql-client
+    
+    - name: Wait for MySQL
+      run: |
+        echo "Waiting for MySQL to start..."
+        for i in {1..30}; do
+          if mysqladmin ping -h 127.0.0.1 -P 3306 -u root -proot --silent; then
+            echo "MySQL is ready!"
+            break
+          fi
+          echo "Waiting for MySQL... ($i/30)"
+          sleep 2
+          if [ $i -eq 30 ]; then
+            echo "MySQL failed to start"
+            exit 1
+          fi
+        done
     
     - name: Configure MySQL
       run: |
-        # 等待 MySQL 启动
-        sleep 10
-        # 配置 MySQL 允许任何主机连接
-        mysql -h localhost -P 3306 -u root -proot -e "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'root'; FLUSH PRIVILEGES;"
-        mysql -h localhost -P 3306 -u root -proot -e "CREATE DATABASE IF NOT EXISTS coeval;"
+        # 使用 TCP/IP 连接 MySQL
+        mysql -h 127.0.0.1 -P 3306 -u root -proot -e "SHOW DATABASES;"
     
     - name: Initialize database
       run: |
         cd database
-        # 查看初始化脚本的内容
-        head -n 20 init_manual.py
-        # 修改数据库连接配置
-        sed -i "s/DB_CONFIG = {/DB_CONFIG = {\n    'host': 'localhost',\n    'user': 'root',\n    'password': 'root',\n    'database': 'coeval',/" init_manual.py
+        # 检查初始化脚本
+        cat init_manual.py | grep -A 5 DB_CONFIG
+        # 修改初始化脚本
+        sed -i 's/DB_CONFIG = {/DB_CONFIG = {\n    "host": "127.0.0.1",\n    "port": 3306,\n    "user": "root",\n    "password": "root",\n    "database": "coeval",/' init_manual.py
+        # 再次检查修改后的脚本
+        cat init_manual.py | grep -A 10 DB_CONFIG
+        # 运行初始化脚本
         python init_manual.py
     
     - name: Start backend server
       run: |
         cd backend
-        # 修改后端数据库配置
-        grep -r "mysql.connector.connect" app/
-        # 修改后端数据库连接参数
-        sed -i "s/connection = mysql.connector.connect(/connection = mysql.connector.connect(host='localhost', user='root', password='root', database='coeval', /" app/utils/db.py
+        # 修改后端数据库配置文件
+        cat app/utils/db.py | grep -A 5 connector
+        # 修改数据库连接信息
+        sed -i 's/connection = mysql.connector.connect(/connection = mysql.connector.connect(host="127.0.0.1", port=3306, user="root", password="root", database="coeval", /' app/utils/db.py
+        # 检查修改后的文件
+        cat app/utils/db.py | grep -A 5 connector
+        # 启动后端服务
         python run.py &
-        sleep 5  # 给服务器一些启动时间
+        # 等待服务启动
+        sleep 10
     
     - name: Run tests
       run: |
         cd test
+        # 检查测试是否可以连接到后端
+        curl -v http://localhost:8000/api/auth/token || true
+        # 运行测试
         pytest -v
