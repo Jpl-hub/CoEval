@@ -16,9 +16,18 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: coeval
+          MYSQL_USER: root
+          MYSQL_PASSWORD: root
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    env:
+      MYSQL_HOST: localhost
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: coeval
 
     steps:
     - uses: actions/checkout@v2
@@ -34,14 +43,39 @@ jobs:
         pip install -r backend/requirements.txt
         pip install -r test/requirements.txt
     
+    - name: Wait for MySQL
+      run: |
+        for i in {1..30}; do
+          if mysql -h localhost -P 3306 -u root -proot -e "SELECT 1" > /dev/null 2>&1; then
+            echo "MySQL is ready!"
+            break
+          fi
+          echo "Waiting for MySQL... ($i/30)"
+          sleep 2
+          if [ $i -eq 30 ]; then
+            echo "MySQL failed to start"
+            exit 1
+          fi
+        done
+    
     - name: Initialize database
       run: |
         cd database
+        # 修改数据库配置
+        sed -i 's/host=.*/host=localhost/' init_manual.py
+        sed -i 's/user=.*/user=root/' init_manual.py
+        sed -i 's/password=.*/password=root/' init_manual.py
+        sed -i 's/database=.*/database=coeval/' init_manual.py
         python init_manual.py
     
     - name: Start backend server
       run: |
         cd backend
+        # 修改后端数据库配置
+        sed -i 's/host=.*/host=localhost/' app/utils/db.py
+        sed -i 's/user=.*/user=root/' app/utils/db.py
+        sed -i 's/password=.*/password=root/' app/utils/db.py
+        sed -i 's/database=.*/database=coeval/' app/utils/db.py
         python run.py &
         sleep 5  # 给服务器一些启动时间
     
