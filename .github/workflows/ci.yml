@@ -19,15 +19,11 @@ jobs:
           MYSQL_ROOT_HOST: '%'  # 允许从任何主机连接
         ports:
           - 3306:3306
-        # 使用 command 来设置 MySQL 配置
-        command: --default-authentication-plugin=mysql_native_password
-
-    env:
-      MYSQL_HOST: localhost
-      MYSQL_PORT: 3306
-      MYSQL_USER: root
-      MYSQL_PASSWORD: root
-      MYSQL_DATABASE: coeval
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
     - uses: actions/checkout@v2
@@ -43,29 +39,30 @@ jobs:
         pip install -r backend/requirements.txt
         pip install -r test/requirements.txt
     
-    - name: Wait for MySQL
+    - name: Configure MySQL
       run: |
-        for i in {1..30}; do
-          if mysql -h localhost -P 3306 -u root -proot -e "SELECT 1" > /dev/null 2>&1; then
-            echo "MySQL is ready!"
-            break
-          fi
-          echo "Waiting for MySQL... ($i/30)"
-          sleep 2
-          if [ $i -eq 30 ]; then
-            echo "MySQL failed to start"
-            exit 1
-          fi
-        done
+        # 等待 MySQL 启动
+        sleep 10
+        # 配置 MySQL 允许任何主机连接
+        mysql -h localhost -P 3306 -u root -proot -e "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'root'; FLUSH PRIVILEGES;"
+        mysql -h localhost -P 3306 -u root -proot -e "CREATE DATABASE IF NOT EXISTS coeval;"
     
     - name: Initialize database
       run: |
         cd database
+        # 查看初始化脚本的内容
+        head -n 20 init_manual.py
+        # 修改数据库连接配置
+        sed -i "s/DB_CONFIG = {/DB_CONFIG = {\n    'host': 'localhost',\n    'user': 'root',\n    'password': 'root',\n    'database': 'coeval',/" init_manual.py
         python init_manual.py
     
     - name: Start backend server
       run: |
         cd backend
+        # 修改后端数据库配置
+        grep -r "mysql.connector.connect" app/
+        # 修改后端数据库连接参数
+        sed -i "s/connection = mysql.connector.connect(/connection = mysql.connector.connect(host='localhost', user='root', password='root', database='coeval', /" app/utils/db.py
         python run.py &
         sleep 5  # 给服务器一些启动时间
     
