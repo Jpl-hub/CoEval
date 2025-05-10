@@ -16,10 +16,11 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: coeval
+          MYSQL_ROOT_HOST: '%'  # 允许从任何主机连接
         ports:
           - 3306:3306
-        # 移除复杂的健康检查配置
-        options: --default-authentication-plugin=mysql_native_password
+        # 使用 command 来设置 MySQL 配置
+        command: --default-authentication-plugin=mysql_native_password
 
     env:
       MYSQL_HOST: localhost
