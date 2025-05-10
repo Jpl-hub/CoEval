@@ -10,6 +10,17 @@ jobs:
   test:
     runs-on: ubuntu-latest
     
+    services:
+      # 添加 MySQL 服务
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: coeval
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
     steps:
     - uses: actions/checkout@v2
     
@@ -23,7 +34,22 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r backend/requirements.txt
         pip install -r test/requirements.txt
+        pip install pytest-asyncio httpx
+    
+    - name: Start backend server
+      run: |
+        cd backend
+        nohup python run.py > server.log 2>&1 &
+        echo "Waiting for server to start..."
+        sleep 10
+        cat server.log
     
     - name: Run tests
       run: |
-        pytest test/
+        cd test
+        pytest -v
+    
+    - name: Check server logs
+      if: always()
+      run: |
+        cat backend/server.log
