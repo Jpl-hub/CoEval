@@ -16,11 +16,10 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: coeval
-          MYSQL_USER: root
-          MYSQL_PASSWORD: root
         ports:
           - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+        # 移除复杂的健康检查配置
+        options: --default-authentication-plugin=mysql_native_password
 
     env:
       MYSQL_HOST: localhost
@@ -61,21 +60,11 @@ jobs:
     - name: Initialize database
       run: |
         cd database
-        # 修改数据库配置
-        sed -i 's/host=.*/host=localhost/' init_manual.py
-        sed -i 's/user=.*/user=root/' init_manual.py
-        sed -i 's/password=.*/password=root/' init_manual.py
-        sed -i 's/database=.*/database=coeval/' init_manual.py
         python init_manual.py
     
     - name: Start backend server
       run: |
         cd backend
-        # 修改后端数据库配置
-        sed -i 's/host=.*/host=localhost/' app/utils/db.py
-        sed -i 's/user=.*/user=root/' app/utils/db.py
-        sed -i 's/password=.*/password=root/' app/utils/db.py
-        sed -i 's/database=.*/database=coeval/' app/utils/db.py
         python run.py &
         sleep 5  # 给服务器一些启动时间
     
